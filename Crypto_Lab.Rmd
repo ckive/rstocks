@@ -1,0 +1,301 @@
+---
+title: "Crypto_Lab"
+author: "Dan Yang"
+date: "5/21/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load in library & dataset
+```{r}
+library(tidyr)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+
+
+setwd(getwd())
+print(getwd())
+
+#coins <- read.csv("data/coins.csv")
+#coin_prices <- read.csv("data/crypto_rates.csv")
+
+#synthesized version
+coins <- read.csv("data_synthesized/coins.csv")
+BTC_coin_prices_df <- read.csv("data_synthesized/BTC_coin_prices.csv")
+BTC_coin_prices_df$dates <- ymd(BTC_coin_prices_df$dates)
+DASH_coin_prices_df <- read.csv("data_synthesized/DASH_coin_prices.csv")
+DASH_coin_prices_df$dates <- ymd(DASH_coin_prices_df$dates)
+DOGE_coin_prices_df <- read.csv("data_synthesized/DOGE_coin_prices.csv")
+DOGE_coin_prices_df$dates <- ymd(DOGE_coin_prices_df$dates)
+ETH_coin_prices_df <- read.csv("data_synthesized/ETH_coin_prices.csv")
+ETH_coin_prices_df$dates <- ymd(ETH_coin_prices_df$dates)
+LTC_coin_prices_df <- read.csv("data_synthesized/LTC_coin_prices.csv")
+LTC_coin_prices_df$dates <- ymd(LTC_coin_prices_df$dates)
+XMR_coin_prices_df <- read.csv("data_synthesized/XMR_coin_prices.csv")
+XMR_coin_prices_df$dates <- ymd(XMR_coin_prices_df$dates)
+
+
+gpus <- read.csv("data_synthesized/gpus.csv")
+gpu_prices <- read.csv("data_synthesized/gpu_rates.csv")
+```
+
+Build dataframes of historical prices of mineable coins from the dataset.
+(For synthesizing, no need)
+```{r}
+coin_code2id <- t(filter(coins, Is_Mineable == 1)["Id"])
+names(coin_code2id) <- as.character(t(filter(coins, Is_Mineable == 1)["Code"]))
+
+#Coin Time-Price Data
+build_coin_df <- function(cid) {
+  data <- data.frame(
+    dates=ymd(unlist(filter(coin_prices, CodeId == cid)["TimeId"])),
+    coin_prices=unlist(filter(coin_prices, CodeId == cid)["Close"])
+    )
+  return(data)
+}
+
+for (code in names(coin_code2id)){
+  dat <- build_coin_df(coin_code2id[code])
+  assign(paste(code, "coin_prices", sep="_"), dat)
+  write.csv(dat, paste("data_synthesized", paste(code, "coin_prices.csv", sep="_"), sep="/"))
+}
+
+#make gpu_prices smaller file for class
+#aa <- unique(gpus$Id)
+#class(aa)
+#bb<- gpu_prices[gpu_prices$ProdId %in% aa, ]
+#write.csv(bb, "gpu_prices_2.csv")
+
+```
+
+#Q1
+Choose a model of GeForce Titan X GPUs  as your dependent variable and use historical price of btc as your independent variable and make a lm model.
+```{r}
+#helper func to get historical prices
+gpu_hprice <- function(id) {
+  hprices <- subset(gpu_prices, ProdId == id, 
+                    select=c(TimeId, Price_USD)
+                    )
+  hprices$TimeId <- ymd(hprices$TimeId) #to "Date" class
+  hprices <- rename(hprices, 
+                    dates = TimeId,
+                    gpu_prices = Price_USD
+  )
+  return(hprices)
+}
+
+titanx <- gpu_hprice(1975)
+
+#merge gpuprice & btc price by date...results in many less data points
+c <- merge(titanx, BTC_coin_prices_df, by="dates")
+
+c <- merge(BTC_coin_prices_df, titanx, by="dates")
+
+#plot price of titanx and btc over their time period
+ggplot(c, aes(x=dates)) + 
+  geom_line(aes(y=gpu_prices), color='red') + 
+  geom_line(aes(y=coin_prices), color='blue') + 
+  labs(x="Time", y="Price ($")
+
+#build model
+titanx_on_btc <- lm(gpu_prices ~ coin_prices, data=c)
+summary(titanx_on_btc)
+
+#plot trained model vs original
+ggplot(data=c, aes(x = coin_prices, y = gpu_prices)) +
+  labs(y = "GPU Price ($)",
+       x = "Price of 1 BTC ($)") +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+#Report how many datapoints your model is based on, and what time period is the fit based on.
+#Report your intuitions about this model.
+
+#Residual Plot against predictors
+ggplot(titanx_on_btc, aes(x=.fitted, y=.resid)) + 
+  geom_point() + labs(x="Fitted", y="Residuals")
+```
+
+#Q2
+Using 980Ti with id=1937, do a similar model as above but with all mineable coins as independent variables
+```{r}
+evga980ti <- gpu_hprice(1975)
+
+bigdf <-  merge(titanx, BTC_coin_prices_df, by="dates")
+bigdf <- merge(bigdf, DASH_coin_prices_df, by="dates", suffixes = c("_btc", "_dash"))
+bigdf <- merge(bigdf, ETH_coin_prices_df, by="dates")
+bigdf <- merge(bigdf, LTC_coin_prices_df, by="dates", suffixes = c("_eth", "_ltc"))
+bigdf <- merge(bigdf, XMR_coin_prices_df, by="dates")
+bigdf <- merge(bigdf, DOGE_coin_prices_df, by="dates", suffixes = c("_xmr", "_doge"))
+
+#better but idk how to name them properly
+#bigdf <- Reduce(function(...) merge(..., by="dates"), 
+#                list(titanx, BTC_coin_prices_df, DASH_coin_prices_df,
+#                     ETH_coin_prices_df, LTC_coin_prices_df,
+#                     XMR_coin_prices_df, DOGE_coin_prices_df))
+
+#Plot all prices over time
+ggplot(bigdf, aes(x=dates)) + 
+  geom_line(aes(y=coin_prices_btc, color='BTC')) + 
+  geom_line(aes(y=coin_prices_dash, color='DASH')) + 
+  geom_line(aes(y=coin_prices_eth, color='ETH')) + 
+  geom_line(aes(y=coin_prices_ltc, color='LTC')) + 
+  geom_line(aes(y=coin_prices_xmr, color='XMR')) + 
+  geom_line(aes(y=coin_prices_doge, color='DOGE')) + 
+  geom_line(aes(y=gpu_prices, color='GTX980Ti')) + 
+  labs(x="Time", y="log(Price) ($)") + 
+  scale_y_log10() 
+
+
+evga980ti_on_allmine <- lm(gpu_prices ~ . - dates, data=bigdf)
+summary(evga980ti_on_allmine)
+
+GGally::ggpairs(bigdf, columns=2:8)
+
+#Residual Plot against predictors
+ggplot(evga980ti_on_allmine, aes(x=.fitted, y=.resid)) + 
+  geom_point() + labs(x="Fitted", y="Residuals")
+```
+
+#Q3
+```{r}
+                                            # y0 depends on y0-1, for num lags, need y0-num past data points
+btc_15_16 <- subset(BTC_coin_prices_df, dates >= "2014-12-27" & dates <= "2015-12-31") #enough for 5 lags,
+for (i in 1:5) {
+  btc_15_16 <- cbind(btc_15_16, lag(btc_15_16["coin_prices"], i))
+  #name accordingly
+  names(btc_15_16)[ncol(btc_15_16)] <- paste0("lag_", i)
+}
+
+#fit with yt = b0 + b1*yt-1 ... for 5 lags
+ar5_15_16 <- lm(coin_prices ~ lag_1+lag_2+lag_3+lag_4+lag_5, data=btc_15_16)
+summary(ar5_15_16)
+
+#use fit to predict values in 16-17
+btc_16_17 <- subset(BTC_coin_prices_df, dates >= "2015-12-27" & dates <= "2016-12-31") #enough for 5 lags
+for (i in 1:5) {
+  btc_16_17 <- cbind(btc_16_17, lag(btc_16_17["coin_prices"], i))
+  #name accordingly
+  names(btc_16_17)[ncol(btc_16_17)] <- paste0("lag_", i)
+}
+# predict prices for 2016-01-01 to 2016-12-31. Note 2016 is a leap year (366 days)
+N <- nrow(btc_16_17)
+pred_16_17_w_15_16 <- predict.lm(ar5_15_16, btc_16_17[6:N,])
+
+#plot predicted, true, and past year's values over time
+df_16_17_w_15_16 <- data.frame(time=btc_16_17[6:N, "dates"],
+                               predicted=pred_16_17_w_15_16,
+                               true=btc_16_17[6:N, "coin_prices"]
+                               )
+                               #true_prev=ulnum[2:366])
+
+ggplot(df_16_17_w_15_16, aes(x=time)) +
+  geom_line(aes(y=predicted), color='red') + #predictions
+  geom_line(aes(y=true), color='blue')  #true of 16-17
+
+
+
+```
+
+
+#Q4
+```{r}
+btc_14_16 <- subset(BTC_coin_prices_df, dates >= "2013-12-02" & dates <= "2015-12-31") #enough for 30 lags,
+for (i in 1:30) {
+  btc_14_16 <- cbind(btc_14_16, lag(btc_14_16["coin_prices"], i))
+  #name accordingly
+  names(btc_14_16)[ncol(btc_14_16)] <- paste0("lag_", i)
+}
+N <- nrow(btc_14_16)
+
+ar30_14_16 <- lm(coin_prices ~ . - dates, data=btc_14_16)
+summary(ar30_14_16)
+
+#use fit to predict values in 16-18
+btc_16_18 <- subset(BTC_coin_prices_df, dates >= "2015-12-02" & dates <= "2017-12-31") #enough for 30 lags
+for (i in 1:30) {
+  btc_16_18 <- cbind(btc_16_18, lag(btc_16_18["coin_prices"], i))
+  #name accordingly
+  names(btc_16_18)[ncol(btc_16_18)] <- paste0("lag_", i)
+}
+# predict prices for 2016-01-01 to 2017-12-31. Note start at 31 because first 30 are lag info for y0 for y0 @ 2016-01-01
+N <- nrow(btc_16_18)
+pred_16_18_w_15_16 <- predict.lm(ar30_14_16, btc_16_18[31:N,])
+
+#plot predicted, true, and past year's values over time
+df_16_18_w_15_16 <- data.frame(time=btc_16_18[31:N, "dates"],
+                               predicted=pred_16_18_w_15_16,
+                               true=btc_16_18[31:N, "coin_prices"]
+                               )
+                               #true_prev=ulnum[2:366])
+
+ggplot(df_16_18_w_15_16, aes(x=time)) +
+  geom_line(aes(y=predicted), color='red') + #predictions
+  geom_line(aes(y=true), color='blue')  #true of 16-17
+```
+
+
+Example of using differenced(lag()) data, no shift back because I don't know how. I saw a post on how to do it by progressively aggregating each term and stuff but I'm not entirely confident I understand it.
+```{r}
+btc_14_16 <- subset(BTC_coin_prices_df, dates >= "2013-12-02" & dates <= "2015-12-31") #enough for 30 lags,
+
+#diffed daily
+dif_btc_14_16 <- diff(as.numeric(unlist(btc_14_16["coin_prices"])), lag=1)
+N <- length(dif_btc_14_16)
+#lag1 <- lag(dif_btc_14_16, 1)
+#lag2 <- lag(dif_btc_14_16, 2)
+df_diff_lag <- data.frame(dates=btc_14_16[1:N, "dates"],
+                          yt=dif_btc_14_16)
+
+for (i in 1:30) {
+  df_diff_lag <- cbind(df_diff_lag, lag(dif_btc_14_16, i))
+  #name
+  names(df_diff_lag)[ncol(df_diff_lag)] <- paste0("lag_", i)
+}
+
+#build model
+lagged_ar30_14_16 <- lm(yt ~ . - dates, data=df_diff_lag)
+summary(lagged_ar30_14_16)
+
+#use model to predict
+#dif predict data
+dif_btc_16_18 <- diff(as.numeric(unlist(btc_16_18["coin_prices"])), lag=1)
+N <- length(dif_btc_16_18)
+
+df_diff_lag <- data.frame(dates=btc_16_18[1:N, "dates"],
+                          yt=dif_btc_16_18)
+
+for (i in 1:30) {
+  df_diff_lag <- cbind(df_diff_lag, lag(dif_btc_16_18, i))
+  #name
+  names(df_diff_lag)[ncol(df_diff_lag)] <- paste0("lag_", i)
+}
+
+diflag_pred <- predict.lm(lagged_ar30_14_16, df_diff_lag)
+
+#plot predicted, true, and past year's values over time
+lol <- data.frame(time=df_diff_lag["dates"],
+                               predicted=diflag_pred,
+                               true=dif_btc_16_18
+                               )
+                               #true_prev=ulnum[2:366])
+
+ggplot(lol, aes(x=dates)) +
+  geom_line(aes(y=predicted), color='red') + #predictions
+  geom_line(aes(y=true), color='blue')  #true of 16-17
+
+# OK, so it works, but how do we transform it back? fuck getting too complicated
+```
+
+
+
+```{r}
+
+
+```
+
+

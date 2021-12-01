@@ -1,0 +1,175 @@
+---
+title: "exploratory"
+author: "Dan Yang"
+date: "5/1/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+```{r}
+#library(tidyr)
+library(tidyverse)
+library(caret)
+library(lubridate)
+library(dplyr)
+```
+
+Read in Datas
+```{r}
+setwd(getwd())
+
+coins <- read.csv("data/coins.csv")
+coin_prices <- read.csv("data/crypto_rates.csv")
+
+gpus <- read.csv("data/gpus.csv")
+gpu_prices <- read.csv("data/gpu_rates.csv")
+#lubridate otf
+gpu_prices$TimeId <- ymd(gpu_prices$TimeId)
+```
+
+Select Coin coin_prices of Mineable Coins, keep track of their ID
+Useful to create mapping of gpu_names -> gpu_ids too
+```{r}
+#motivation:
+#filter(coins, Is_Mineable == 1)
+
+#Optionally create mapping code/name --> ID
+coin_code2id <- t(filter(coins, Is_Mineable == 1)["Id"])
+names(coin_code2id) <- as.character(t(filter(coins, Is_Mineable == 1)["Code"]))
+
+#GPU name->id mapping
+gpu_name2id <- t(as.data.frame(gpus$Id))
+names(gpu_name2id) <- as.character(t(as.data.frame(gpus$Processor)))
+```
+
+Clean data --> timeseries with lubridate; form time,price with price being close price
+For each of the minable coins, build dataframe of (cleaned) time and (close) price. 
+You may find a helper function useful for this operation
+```{r}
+#Coin Time-Price Data
+build_coin_df <- function(cid) {
+  data <- data.frame(
+    dates=ymd(unlist(filter(coin_prices, CodeId == cid)["TimeId"])),
+    coin_prices=unlist(filter(coin_prices, CodeId == cid)["Close"])
+    )
+  return(data)
+}
+
+for (code in names(coin_code2id)){
+  dat <- build_coin_df(coin_code2id[code])
+  assign(paste(code, "coin_prices_df", sep="_"), dat)
+}
+```
+
+Time Range Helper Function: listof(GPU_names) and coin --> min/max time range of price
+```{r}
+trange <- function(gpus, coin) {
+  gpumins <- c()
+  gpumaxs <- c()
+  for (gpu in gpus){
+    #gid <- gpu_name2id[gpu]
+    times <- conglo(gpu)$TimeId
+    gpumins <- append(gpumins, min(times))
+    gpumaxs <- append(gpumaxs, max(times))
+  }
+  
+  #rmb want most inclusive time range of all sets
+  #stupid r no multiarg return
+  foo <- list("min_t"=max(gpumins), "max_t"=min(gpumaxs),
+              "days"=min(gpumaxs)-max(gpumins))
+  return(foo)
+}
+
+n900s_trange <- c("GeForce 950", "GeForce 960", "GeForce 970", 
+                  "GeForce 980", "GeForce 980 Ti")
+range <- trange(n900s_trange)
+range$min_t
+range$max_t
+range$days
+```
+
+combines price data of all skus of some model (without error handling)
+deals with duplicate time stamps by discarding duplicates
+Conglomerate helper function: GPUname --> ids, df(time,price)
+```{r}
+conglo <- function(gpuname) {
+  df <- data.frame(TimeId=as.Date(numeric()),
+                   Price_USD=as.numeric())
+  ids <- as.numeric(unlist(filter(gpus, Processor==gpuname)["Id"]))
+  for (id in ids){
+    cur <- filter(gpu_prices, ProdId==id)[c("TimeId", "Price_USD")]
+    df <- rbind(df, cur)
+  }
+  #get rid of duplicates & re-sort
+  df <- df %>% distinct(TimeId, .keep_all=TRUE)
+  df <- arrange(df, TimeId)
+  
+  return(df)
+}
+
+n980tis <- conglo("GeForce 980 Ti") 
+
+
+```
+
+
+Regression Y(price_of_Xcoin) = priceofGPUA, priceofGPUB, ... all of them)
+Given price of GPUs(ABC...), prob of price of coin X = ? IS THIS LOGISTIC?
+```{r}
+
+
+```
+
+Select just the most influential GPU prices?
+```{r}
+
+
+```
+
+Within 1 type of GPU (e.g. Titan X) Does Brand? memory size? Play a role in price of ETH?
+What about type? AMD vs NVidia? What about in different periods of time?
+```{r}
+
+
+```
+
+
+Use model on prices 2018-2020 for coins XYZ
+```{r}
+
+
+```
+
+
+Invert it! Bayes Theorem. 
+Given price of coin X, prob of price of GPU X = ? 
+(on new data or on periods of time that wasn't used to build the model)
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+

@@ -1,0 +1,154 @@
+---
+title: "crypto_easier"
+author: "Dan Yang"
+date: "5/19/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyr)
+library(tidyverse)
+library(caret)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+
+setwd(getwd())
+```
+
+Read in crypto & gpu infosheet & prices
+```{r}
+coins <- read.csv("data/coins.csv")
+coin_prices <- read.csv("data/crypto_rates.csv")
+
+gpus <- read.csv("data/gpus.csv")
+gpu_prices <- read.csv("data/gpu_rates.csv")
+
+```
+
+Mapping from (mineable) crypto_name to crypto_id, gpu_name to gpu_id
+```{r}
+#string - numeric mapping
+#Crypto name --> ID
+coin_code2id <- t(filter(coins, Is_Mineable == 1)["Id"])
+names(coin_code2id) <- as.character(t(filter(coins, Is_Mineable == 1)["Code"]))
+
+#GPU name->id mapping
+gpu_name2id <- t(as.data.frame(gpus$Id))
+names(gpu_name2id) <- as.character(t(as.data.frame(gpus$Processor)))
+
+```
+
+R programming practice I (Optional, they can use this code if they)
+```{r}
+#Coin Time-Price Data
+build_coin_df <- function(cid) {
+  data <- data.frame(
+    dates=ymd(unlist(filter(coin_prices, CodeId == cid)["TimeId"])),
+    coin_prices=unlist(filter(coin_prices, CodeId == cid)["Close"])
+    )
+  return(data)
+}
+
+for (code in names(coin_code2id)){
+  dat <- build_coin_df(coin_code2id[code])
+  assign(paste(code, "coin_prices_df", sep="_"), dat)
+}
+```
+
+Total Historical price of Coin X
+```{r}
+#plot it out just for funzies
+ggplot(BTC_coin_prices_df, aes(x=dates, y=coin_prices)) +
+  geom_line() + 
+  xlab("Date") + ylab("Price of 1 BTC ($)")  + ggtitle("BTC historical price")
+
+ggplot(XMR_coin_prices_df, aes(x=dates, y=coin_prices)) +
+  geom_line() + 
+  xlab("Date") + ylab("Price of 1 ETH ($)")  + ggtitle("ETH historical price")
+
+ggplot(DOGE_coin_prices_df, aes(x=dates, y=coin_prices)) +
+  geom_line() + 
+  xlab("Date") + ylab("Price of 1 DOGE ($)")  + ggtitle("DOGE historical price")
+
+
+
+```
+
+Q2
+```{r}
+#subset 2015-01-01 to 2015-12-31 (inclusive) #note need 16-01-01 for predicting 15-12-31
+btc_15_16 <- subset(BTC_coin_prices_df, dates >= "2015-01-01" & dates <= "2016-01-01")
+
+#plot it out just for funzies
+p <- ggplot(btc_15_16, aes(x=dates, y=coin_prices)) +
+  geom_line() + 
+  xlab("Date") + ylab("Price of 1 BTC ($)")
+p
+
+#AR(1) with lm
+N_15_16 <- nrow(btc_15_16)
+
+btc_15_16_yt <- as.numeric(btc_15_16[-1, "coin_prices"])
+btc_15_16_yt_1 <- as.numeric(btc_15_16[-N_15_16, "coin_prices"])
+
+btc_15_16_ar1 <- lm(btc_15_16_yt ~ btc_15_16_yt_1)
+
+summary(btc_15_16_ar1)
+
+# use prediction on 16-17
+
+#subset
+btc_16_17 <- subset(BTC_coin_prices_df, dates >= "2016-01-01" & dates <= "2017-01-01")
+N_16_17 <- nrow(btc_16_17)  #nrow 366 + 1 (gap year) but we only still just get 365 for predictions
+pred_on_btc_16_17 <- predict.lm(btc_15_16_ar1, btc_16_17[,"dates"]) 
+
+restricted_x <- btc_16_17[1:365, "dates"]
+restricted_y <- btc_16_17[1:365, "coin_prices"]
+
+training_y <- btc_15_16[1:365, "coin_prices"]
+
+
+q <- ggplot(btc_16_17[1:365,], aes(x=restricted_x)) +
+  geom_line(aes(y=restricted_y), color='darkred') + #true values
+  geom_line(aes(y=pred_on_btc_16_17), color='blue') + #predicted
+  geom_line(aes(y=training_y), color='green') + #last year's values
+  xlab("Date") + ylab("Price of 1 BTC ($)")
+q
+
+
+
+#(pred_on_btc_15_16)
+restricted_x <- btc_15_16[1:N_15_16-1, "dates"]
+restricted_y <- btc_15_16[1:N_15_16-1, "coin_prices"]
+
+q <- ggplot(btc_15_16[1:N-1,], aes(x=restricted_x)) +
+  geom_line(aes(y=restricted_y), color='darkred') + 
+  #geom_line(aes(y=pred_on_btc_15_16), color='blue') + 
+  xlab("Date") + ylab("Price of 1 BTC ($)")
+q
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+
+
+
+```
+
+
